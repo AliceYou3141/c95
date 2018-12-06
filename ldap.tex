@@ -1,4 +1,4 @@
-\documentclass[b5j,11pt]{jsbook}
+\documentclass[b5j,12pt]{jsbook}
 %\documentclass[b5j,10pt,tombo]{jsbook}
 
 %\usepackage[dviout]{graphicx}
@@ -18,8 +18,8 @@
 \usepackage{amssymb}
 \usepackage{fancybox}
 \usepackage{ascmac}
-\usepackage{listings,jlisting}
-\usepackage[avantgarde]{quotchap}
+%\usepackage{listings,jlisting}
+%\usepackage[avantgarde]{quotchap}
 
 %\renewcommand{\baselinestretch}{0.5}
 %\renewcommand{\baselinestretch}{0.6}
@@ -33,25 +33,17 @@
 \tableofcontents
 \listoffigures
 \mainmatter
-\include{gairon}
-\include{oneonone}
-\include{access}
-\include{ip}
-\include{ip2}
-\include{transport}
-\include{udp}
-\include{tcp}
-\include{application}
-\include{chapter1}
-\include{chapter2}
-\include{chapter3}
-%\include{icmp}
+
+\include{cpt1}
+\include{cpt2}
+\include{cpt3}
+\include{cpt4}
 
 \appendix
-\include{appendix}
-\include{appendix3}
+
+\include{adx1}
 
 \backmatter
-\include{bibliography}
+%\include{bibliography}
 \include{atogaki}
 \end{document}
