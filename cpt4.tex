@@ -1,5 +1,158 @@
 \chapter{Postfixとの連携}
 
+PostfixとLDAPを連携させるときは、Postfixテーブルの参照に対して、LDAPのスキーマを指定します。
+
 \section{Postfixテーブル}
 
-\section{探査構文}
+
+Postfixテーブルは、mail.cf(5)の中で、テーブル名と、参照スキーマ、定義ファイルのパスをイコールで結んで設定します。
+参照スキーマのスキーマという用語は、LDAPのオブジェクトタイプ定義ではなく、データにアクセスする手段としてのスキーマとして使われています。ここでは、hash：というのが、ハッシュテーブルを参照する、というスキーマになります。
+例として、、エイリアスをハッシュテーブル形式で記述する設定を書いてみましょう。
+
+\begin{verbatim}
+alias_maps = hash:/etc/postfix/alias
+\end{verbatim}
+
+ここで、aliasというのは、Postfixテーブル形式で書いたテキストファイルの名前です。実際には、postmap(8)コマンドでハッシュした結果の、alias.dbというファイルが参照されます。
+
+\subsection{LDAPスキーマによるアクセス}
+
+LDAPに置いたエイリアス情報を参照する場合、この設定は以下のように書きます。
+
+\begin{verbatim}
+alias_maps = ldap:/etc/postfix/ldap_alias
+\end{verbatim}
+
+alias\_mapsディレクティブの右辺には、LDAPの探査構文を書いたテキストファイルを指定します。参照スキーマがLDAPのときは、指定されたファイルは、LDAPの探査構文を指定したファイルとなります。探査構文の例を示します。
+
+\begin{verbatim}
+search_host = ldap.uranohoshi.example
+search_base = ou=aliases,ou=tables,dc=uranohoshidc=example
+bind = yes
+bind_dn = cn=Manager,dc=uranohoshi,dc=example
+bind_pw = password
+scope = one
+query_filter = (&(mail=%s)(mailEnalbe=OK))
+result_attribute = maildrop
+result_format = %s
+\end{verbatim}
+
+\subsection{探索の戻り値}
+
+LDAPでも、Postfixテーブルと同様に、クエリに合致するノードが見つかったら、戻り値として指定した属性の属性値が返されます。通常、クエリにはマクロで探索のキーを与えます。このキーが、Postfixテーブルの左辺に相当します。また、また、返される属性値がPostfixテーブルの右辺に相当します。
+
+キーが探索できない場合は、該当する結果がないと言うことになり、この点もPostfixテーブルによる探索とかわりません。
+
+
+\subsection{探査構文ファイルのディレクティブ}
+
+探査構文ファイルは、LDAPサーバの情報と、その中で情報を探すのに必要な情報とが書かれています。そのディレクティブの主なものについて説明します。
+
+\paragraph{search\_host}
+アクセスするLDAPサーバを、解決可能な名前もしくはIPアドレスで指定します。LDAPスキーマはネットワーク透過であり、LDAPサーバはPostfixと同じホストの上になくてもかまいません。
+
+\paragraph{search\_base}
+DITの中で、このノードを起点に探索を行う、場所を指定します。ルートからのDNで記載します。
+
+\paragraph{bind}
+何らかのユーザ認証を行った上でDITにアクセスするかのフラグです。yesかnoで記述します。
+noの場合は、探査の対象となる部分が、LDAPサーバの設定で、匿名でアクセス可能になっている必要があります。
+
+\paragraph{bind\_dn}
+ユーザ認証を行うとき、そのユーザの情報が入っているノードをDNで指定します。この例では、LDAPの管理アカウントを指定しています。
+
+\paragraph{bind\_pw}
+ユーザ認証に使うパスワードを記述します。プレーンテキストで記述するので、メールサーバのOSの設定で、探査構文ファイルのアクセス権を適切に設定する必要があります。
+
+\paragraph{scope}
+base\_dnを起点に、土の範囲を探すかを指定します。oneを指定した場合は、base\_dnと、その直接の子ノードのみを探索の対象とします。
+subを指定した倍は、base\_dnと、それを起点とする部分木全てが探索の対象となります。このディレクティブを省略した時のデフォルト値は、subになります。
+
+\paragraph{query\_filter}
+LDAPに問い合わせを行うときのクエリ構文です。詳細は次の章で解説します。
+
+\paragraph{result\_attribute}
+戻り値となる属性を指定します。探索に一致するノードがあれば、そのノードの、属性値が全てが返されます。
+
+\paragraph{result\_format}
+戻り値のフォーマットを設定します。result\_attributeで指定した属性の値をそのまま使う場合は、省略可能です。例えば、以下のように記述すると、属性値を、DNSでMX探索を行わず、そのままｓｍｔｐサービスによる宛先とするホスト名、というように、Transport(5)テーブルの戻り値となります。
+
+\begin{verbatim}
+result_format = smtp:[%s]
+\end{verbatim}
+
+\section{探査構文のクエリと結果}
+
+
+\subsection{クエリの記述}
+
+探査構文の中で、query\_filterは、LDAPで該当するノードがあるかどうかを探すための構文となります。この構文は、属性と、属性値のペアをセットを丸括弧で囲って記述します。
+たとえば、属性mailEnableの属性値がOKであるノードがあるかを探すときは、以下のように記述します。
+
+\begin{verbatim}
+query_filter = (mailEnable=OK)
+\end{verbatim}
+
+また、この探索では、AND、OR,NOTが使用可能です。これは、演算子を前におく、前置記法（ポーランド記法）で記述します。属性mailEnableがOKでないノードを条件とする伊ときは、NOT演算子!をつけます。
+
+\begin{verbatim}
+query_filter = (!(mailEnable=OK))
+\end{verbatim}
+
+\%sという入力キーを著わすマクロを使って、それがmail属性に一致して、mailEnable属性がOKであるノードがあるかを探すには、以下のように書きます。AND演算子として、\&を用います。
+
+\begin{verbatim}
+query_filter = (&(mail=%s)(mailEnable=OK))
+\end{verbatim}
+
+OR演算子は\|になります。以下のように記述します。mailEnableの属性値がdisabledか、defferかのどちらかであるノードとヒットします。
+
+\begin{verbatim}
+query_filter = (|(mailEnalbe=disabled)(mailEnable=deffer))
+\end{verbatim}
+
+
+
+\subsection{戻り値の加工}
+
+LDAPの属性値は、そのままPostfixテーブルのフォーマットになっているとかは義理ません。特に、汎用のユーザアカウントデータベースを参照している場合は、Postfixのみで使うフォーマットで属性値を記述するべきではない、ということでもあります。
+
+そのため、result\_formatで、戻り値のフォーマットを設定することができます。result\_attributeでしていた属性の、戻り値となる属性値がメールアドレス形式であるとすれば、@の左のアドレスを著わすマクロ\%uと、右のドメイン部分を著わす\%dが使えます。このとき、戻り値のメールアドレスからホームディレクトリのパスを返す探査構文は、以下のように書けるでしょう。
+
+\begin{verbatim}
+query_filter = (mail=$s)
+result_attribute = mail
+result_format = /home/%u
+\end{verbatim}
+
+特定のドメイン宛のメールを、別のメールサーバに転送する、transport(5)のための探査構文は、以下のように書けるでしょう。
+domainと、nexthopという二つの属性は、transport(5)のために定義した属性であるとします。戻り値となる属性値は、\%sであらわされます。
+
+\begin{verbatim}
+query_filter = (domain = %d)
+result_attribute = nexthop
+result_format = smtp:[%s]
+\end{verbatim}
+
+\subsection{探査構文で使用できるマクロ}
+
+LDAPの探査構文では、入力値と、その部分を著わすマクロを使用することができます。このマクロは、base\_dn、query\_filter、result\_formatで使用することができます。
+
+\paragraph{\%s}
+入力キーをあらわすマクロです。base\_dnとquery\_filterでは、テーブル左辺に相当する探索のキーをあらわします。
+result\_formatでは、一致するノードがあって戻り値があるとき、その戻り値として指定された属性値そのものをあらわします。
+
+\paragraph{\%u}
+マクロ\%sの内容が、mari@uranohoshi.exampleのようなメールアドレス形式であるとき、@から左側がその値となります。
+
+\paragraph{\%d}
+マクロ\%sの内容がメールアドレス形式であるとき、@から右の、ドメイン名もしくはホスト名部分が、その値となります。
+
+\paragraph{\%[1-9]}
+マクロ\%sの内容がメールアドレス形式であるとき、@から左のドメイン部分が、ドット区切りの右から順番に、1、2,というように割り当てられます。dia@mail.uranohoshi.exampleというメールアドレスがキーの場合、\%1はexample、\%2はuranohoshi、\%3は、mailとなります。
+
+このマクロは、ひとつのDITに複数ドメインの情報を入れた場合、探索の起点であるbase\_dnを選択する、というような場合に使います。
+
+\begin{verbatim}
+base_dn = ou=users,dc=%2,dc=%1
+\end{verbatim}
