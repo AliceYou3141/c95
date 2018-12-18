@@ -1,6 +1,6 @@
-\chapter{ツリー構造の設計}
+\chapter{Postfixアカウントデータベース構造の設計}
 
-\subsection{大まかな形}
+\section{アカウントデータベースの大まかな形}
 
 メールアカウントとして使うLDAPツリーを構成するとき、どのようなツリー構造にすれば良いのでしょうか。
 慣例的に、LDAPツリーのルートノード以下は、LDAPそのものの管理アカウント情報を入れる部分木と、LDAPで管理したい情報を入れる部分木から構成されます。
@@ -189,5 +189,19 @@ ISO/ITU-Tによって定義されていない属性を使うときは、スキ�
 
 
 \subsection{スキーマファイルによる追加}
+
+属性と、それをまとめたオブジェクトタイプは、スキーマファイルというテキストの設定ファイルによって、追加する事ができます。OpenLDAPの場合は、そのDITで使用するスキーマはslapd.conf(5)に記述します。
+
+OpenLDAPのソースツリーには、拡張子.schemaで基本的なスキーマファイルが付属しています。また、独自のスキーマファイルを策せ強いた場合も、同様に追加する事ができます。このスキーマファイルのパスは、.rmpのパッケージの標準的なパスです。FreeBSDなどでは、インストールパスが異なります。
+
+\begin{verbatim}
+# 標準的なスキーマ
+include         /etc/openldap/schema/core.schema
+include         /etc/openldap/schema/cosine.schema
+include         /etc/openldap/schema/inetorgperson.schema
+
+# オリジナルのスキーマ
+include         /path/to/my.schema
+\end{verbatim}
 
 \section{OIDとPEN}
