@@ -105,7 +105,9 @@ query_filter = (!(mailEnable=OK))
 query_filter = (&(mail=%s)(mailEnable=OK))
 \end{verbatim}
 
-OR演算子は\|になります。以下のように記述します。mailEnableの属性値がdisabledか、defferかのどちらかであるノードとヒットします。
+OR演算子は
+\textbar
+になります。以下のように記述します。mailEnableの属性値がdisabledか、defferかのどちらかであるノードとヒットします。
 
 \begin{verbatim}
 query_filter = (|(mailEnalbe=disabled)(mailEnable=deffer))
