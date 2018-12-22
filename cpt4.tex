@@ -1,10 +1,16 @@
 \chapter{Postfixとの連携}
 
-PostfixとLDAPを連携させるときは、Postfixテーブルの参照に対して、LDAPのスキーマを指定します。
+PostfixとLDAPを連携させるときは、Postfixテーブルの参照に対して、LDAPのスキーマを指定します。このとき、ディレクティブに指定するファイルは、1行1レコードのテーブルファイルではなく、探査構文とよばれる、LDAPへのクエリを書いたファイルとなります。
+
+その探査構文の記法について、本章で説明します。
 
 \section{Postfixテーブル}
 
+PostfixテーブルをLDAPに置くとき、基本的な戦略は、テーブルと対応づけた子ノードとして、レコードに相当するノードを置きます。また、この探索においては、再帰が生じないように、レコードに相当するものは、全て兄弟ノードとします。つまり、Postfixテーブルは、親と複数の子だけからなぶ部分木として、LDAPツリーの中にそんざいすることになります。
 
+この方針でつくったPostfixテーブルの
+
+\subsection{LDAPへの置き換え}
 Postfixテーブルは、mail.cf(5)の中で、テーブル名と、参照スキーマ、定義ファイルのパスをイコールで結んで設定します。
 参照スキーマのスキーマという用語は、LDAPのオブジェクトタイプ定義ではなく、データにアクセスする手段としてのスキーマとして使われています。ここでは、hash：というのが、ハッシュテーブルを参照する、というスキーマになります。
 例として、、エイリアスをハッシュテーブル形式で記述する設定を書いてみましょう。
@@ -119,12 +125,15 @@ query_filter = (|(mailEnalbe=disabled)(mailEnable=deffer))
 
 LDAPの属性値は、そのままPostfixテーブルのフォーマットになっているとかは義理ません。特に、汎用のユーザアカウントデータベースを参照している場合は、Postfixのみで使うフォーマットで属性値を記述するべきではない、ということでもあります。
 
-そのため、result\_formatで、戻り値のフォーマットを設定することができます。result\_attributeでしていた属性の、戻り値となる属性値がメールアドレス形式であるとすれば、@の左のアドレスを著わすマクロ\%uと、右のドメイン部分を著わす\%dが使えます。このとき、戻り値のメールアドレスからホームディレクトリのパスを返す探査構文は、以下のように書けるでしょう。
+そのため、result\_formatで、戻り値のフォーマットを設定することができます。result\_attributeでしていた属性の、戻り値となる属性値がメールアドレス形式であるとすれば、@の左のアドレスを著わすマクロ\%uと、右のドメイン部分を著わす\%dが使えます。
+
+れいとして、バーチャルドメイン運用の時、メールアドレスとそのメールアドレスを格納するディレクトリのパスの万ピングテーブルである、virtual\_mailbox\_maxpの探査構文は、以下のようになります。
 
 \begin{verbatim}
+# Maildir/運用のときのマッピング
 query_filter = (mail=$s)
 result_attribute = mail
-result_format = /home/%u
+result_format = /home/%u/Maildir/
 \end{verbatim}
 
 特定のドメイン宛のメールを、別のメールサーバに転送する、transport(5)のための探査構文は、以下のように書けるでしょう。
@@ -158,3 +167,171 @@ result\_formatでは、一致するノードがあって戻り値があるとき
 \begin{verbatim}
 base_dn = ou=users,dc=%2,dc=%1
 \end{verbatim}
+
+\section{レコードの置き換え}
+Ｐｏｓｔｆｉｘテーブルのレコードを、LDAPに置き換えてみましょう。今度は、transport(5)をLDAPに置き換えてみます。
+
+\subsection{transport(5)}
+
+transport(5)は、届いたメールをどのような手段でネクストホップに転送するかを、メールアドレスもしくはドメイン名を左辺に、転送先と転送に使うサービスを右辺に記述します。
+
+main.cf(5)で、transportテーブルは以下のように定義されているとします。
+
+\begin{verbatim}
+transport_maps = hash:/etc/postfix/transport
+\end{verbatim}
+
+この場合、/etc/postfix/transportをハッシュした、transport.dbというファイルが参照されます。
+ハッシュされるものとファイルには、以下のように書いてあるとしましょう。
+
+\begin{verbatim}
+otonoki.example  smtp:[mailgw.otonoki.example]
+aqours@uranohoshi.example  smtp:[aqours.uranohoshi.example]
+uranohoshi.example    smtp:
+\end{verbatim}
+
+内容としては、以下のようになります。
+
+\begin{enumerate}
+  \item otokonoki.exampleドメイン宛のメールは、ゲートウェイサーバmailgw.otonoki.exampleに転送
+  \item aqours@uranohosshi.example宛のメールは、専用サーバaqours.uranohoshi.exampleに転送
+  \item それ以外のuranohoshi.exampleドメイン宛のメールは、DNSでMX検索して転送
+\end{enumerate}、
+
+転送はいずれも、master.cf(8)で定義されているsmtpサービスを使います。また、transport(8)はファーストマッチなので、上から適合するものが用いられます。
+
+\subsection{Transportテーブル置き換えのスキーマ}
+TransportテーブルをLDAPのノードにするために、その左辺と右辺をあらわす属性を定義しましょう。結論から行くと、以下のようなスキーマファイルで著わされます。
+
+以下のスキーマでは、OIDのPENとして、99999を使用しています。これはIANAによって割り当てられた数字ではなく、説明用に使用しているものです。実際に、独自のスキーマを定義素して使用するときは、IANAからPENを取得するようにしてください。
+
+\begin{verbatim}
+attributeTypes: ( 1.3.6.1.4.1.99999.1.1
+        NAME 'transportSource'
+        DESC 'Postfix Transport(5) source'
+        EQUALITY caseIgnoreMatch
+        SUBSTR caseIgnoreSubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )
+
+
+attributeTypes: ( 1.3.6.1.4.1.99999.1.2
+        NAME 'transportDestination'
+        DESC 'Postfix Transport(5) destination'
+        EQUALITY caseIgnoreMatch
+        SUBSTR caseIgnoreSubstringsMatch
+        SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )
+
+
+objectclass (1.3.6.1.4.1.99999.1
+        Name 'postfixTransport'
+        DESC 'Postfix tranport table object'
+        SUP top
+        STRUCTURAL
+        MAY ( transportSource $ transportDestination ) )
+\end{verbatim}
+
+このスキーマファイルは、transportSource、transportDextinationという二つの属性を、オブジェクトタイプpostfixTransportとして、追加します。どちらも、メールアドレスではなく、属性値が文字列であるとして定義しています。
+
+また、オブジェクトタイプpostfixTransportを利用して、transport(5)相当のLDIFを、以下のように定義します。
+
+\begin{verbatim}
+dn: tranportSource=otonoki.ecample,ou=transport,
+   ou=tables,dc=uranohoshi,dc=example
+changeType: add
+objectClass: top
+objectClass: postfixTransport
+transportSource: otonoki.example
+transportDestination: smtp:[otonoki.example]
+
+dn: tranportSource=aqours@uranohoshi.example,ou=transport,ou=tables,
+   dc=uranohoshi,dc=example
+changeType: add
+objectClass: top
+objectClass: postfixTransport
+transportSource: aqours@uranohoshi.example
+transportDestination: smtp:[aqours.uranohoshi.example]
+
+dn: tranportSource=uranohoshi.example,ou=transport,ou=tables,
+   dc=uranohoshi,dc=example
+changeType: add
+objectClass: top
+objectClass: postfixTransport
+transportSource: aqours@uranohoshi.example
+transportDestination: smtp:
+
+\end{verbatim}
+
+\subsection{まちがった探査構文定義}
+
+transport(5)のかわりとなる部分木にアクセスするには、どのような探査構文を定義すれば良いでしょうか。
+まず、動きそうだけど期待通り動かない場合がある例を示します。
+
+\begin{verbatim}
+search_host = ldap.uranohoshi.example
+search_base = ou=transport,ou=tables,dc=uranohoshidc=example
+bind = yes
+bind_dn = cn=Manager,dc=uranohoshi,dc=example
+bind_pw = password
+scope = one
+query_filter = (|(transportSource=%s)(transportSource=%d))
+result_attribute = transportDestination
+result_format = %s
+\end{verbatim}
+
+この探査構文のファイル名が、transport.cfであるとすると、main.cf(5)では、このように定義されます。
+
+\begin{verbatim}
+transport_maps = ldap:/etc/postfix/transport.cf
+\end{verbatim}
+
+一見すると、これでトランスポートテーブルになりそうです。ですが、これは期待通りに動きません。それは、aqours@uranohoshi.exampleに適用される転送ルールと、uranohoshi.exampleに適用されるルールのどちらが先に判定されるか、確定できないためです。
+
+そのため、この探査構文の定義では、aqours@uranohoshi.example宛てのメールが、専用サーバaqours.uranohoshi.netに転送される場合と、権威DNSに登録されている、uranohoshi.exampleのMXのどちらに転送されるかが確定しません。
+
+つまり、この例では先にメールアドレスのマッチングが先に試みられる必要があります。
+
+\subsection{正しい探査構文}
+
+では、正しい順番で判定する探査構文とはどのようなものでしょうか･まず、探査構文を、transportSourceにメールアドレスがきているとして、探索を行うものと、ドメイン名がきているときに探索を行うものとに分けます。
+
+まず、メールアドレスについて探査する探査構文ファイルを、transport\_mail.cfとします。
+
+\begin{verbatim}
+search_host = ldap.uranohoshi.example
+search_base = ou=transport,ou=tables,dc=uranohoshidc=example
+bind = yes
+bind_dn = cn=Manager,dc=uranohoshi,dc=example
+bind_pw = password
+scope = one
+query_filter = (transportSource=%s)
+result_attribute = transportDestination
+result_format = %s
+\end{verbatim}
+
+同様に、ドメインについて探索する探査構文ファイルを、transport\_domain.cfとします。
+
+\begin{verbatim}
+search_host = ldap.uranohoshi.example
+search_base = ou=transport,ou=tables,dc=uranohoshidc=example
+bind = yes
+bind_dn = cn=Manager,dc=uranohoshi,dc=example
+bind_pw = password
+scope = one
+query_filter = (transportSource=%d)
+result_attribute = transportDestination
+result_format = %s
+\end{verbatim}
+
+つぎに、main.cf(5)で、transport\_mapsディレクティブを設定します。ここで、main.cfのディレクティブは、ファーストマッチであることを利用します。先にメールアドレスによる探査構文を参照させ、それで見つからない場合に、ドメインの探査構文を適用させます。
+
+\begin{verbatim}
+transport_maps = ldap:/etc/postfix/transport_mail.cf
+                 ldap:/etc/postfix/transport_domain.cf
+\end{verbatim}
+
+\subsection{すべてのPostfixテーブルをLDAPに乗せるべきか}
+
+transport(5)をLDAPに乗せるのは、少しばかり問題があることがわかりました。今回は、メールアドレスによるルールは、ドメイン名によるルールよりも優先度が高い、ということで対処できました。
+ですが、この優先順が一意に定まらない場合など、無理にLDAPに乗せないほうが運用しやすい場合もあります。
+
+その場合は、テキストファイルをベースとする運用をするほうが簡単でしょう。
